@@ -189,7 +189,7 @@ class WheelDeviceDeck {
   Map<String, dynamic> wheelAsMap({String? wheelFcm}) => {
     'fcm_token': wheelFcm ?? 'missing_token',
     'device_id': wheelDeviceId ?? 'missing_id',
-    'app_name': 'retroneonquiz',
+    'app_name': 'bestoffers',
     'instance_id': wheelSessionId ?? 'missing_session',
     'platform': wheelPlatformKind ?? 'missing_system',
     'os_version': wheelOsBuild ?? 'missing_build',
@@ -214,7 +214,7 @@ class WheelSpy {
   void wheelStart({VoidCallback? onWheelUpdate}) {
     final opts = AppsFlyerOptions(
       afDevKey: 'qsBLmy7dAXDQhowM8V3ca4',
-      appId: '6755681349',
+      appId: '6756072063',
       showDebug: true,
       timeToWaitForATTUserAuthorization: 0,
     );
