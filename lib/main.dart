@@ -738,7 +738,7 @@ class _LuckHunterHarborState extends State<LuckHunterHarbor>
 
   final LuckHunterDeviceDeck luckHunterDeviceDeck = LuckHunterDeviceDeck();
   final LuckHunterSpy luckHunterSpy = LuckHunterSpy();
-
+  bool _useSafeArea = false; // по умолчанию отключён, можно поменять
   final Set<String> luckHunterSchemes = <String>{
     'tg',
     'telegram',
@@ -1348,324 +1348,338 @@ class _LuckHunterHarborState extends State<LuckHunterHarbor>
   Widget build(BuildContext context) {
     _bindLuckHunterNotificationTap(); // повторная привязка
 
+    // основной контент
+    Widget content = Stack(
+      children: <Widget>[
+        if (luckHunterCoverVisible)
+          const LuckHunterLightningLoader()
+        else
+          Container(
+            color: Colors.black,
+            child: Stack(
+              children: <Widget>[
+                InAppWebView(
+                  key: ValueKey<int>(luckHunterHatchCounter),
+                  initialSettings:  InAppWebViewSettings(
+                    javaScriptEnabled: true,
+                    disableDefaultErrorPage: true,
+                    mediaPlaybackRequiresUserGesture: false,
+                    allowsInlineMediaPlayback: true,
+                    allowsPictureInPictureMediaPlayback: true,
+                    useOnDownloadStart: true,
+                    javaScriptCanOpenWindowsAutomatically: true,
+                    useShouldOverrideUrlLoading: true,
+                    supportMultipleWindows: true,
+                    transparentBackground: true,
+                  ),
+                  initialUrlRequest: URLRequest(
+                    url: WebUri(luckHunterHomeUrl),
+                  ),
+                  onWebViewCreated:
+                      (InAppWebViewController luckHunterController) {
+                    luckHunterWebViewController = luckHunterController;
+
+                    luckHunterBosun ??= LuckHunterBosun(
+                      luckHunterDeviceDeck: luckHunterDeviceDeck,
+                      luckHunterSpy: luckHunterSpy,
+                    );
+
+                    luckHunterCourier ??= LuckHunterCourier(
+                      luckHunterBosun: luckHunterBosun!,
+                      getLuckHunterWebView: () =>
+                      luckHunterWebViewController,
+                    );
+
+                    luckHunterWebViewController.addJavaScriptHandler(
+                      handlerName: 'onServerResponse',
+                      callback: (List<dynamic> luckHunterArgs) {
+                        try {
+                          if (luckHunterArgs.isNotEmpty &&
+                              luckHunterArgs[0] is Map) {
+                            final dynamic raw = luckHunterArgs[0]['savedata'];
+                            final String savedata = raw?.toString() ?? '';
+
+                            print("Server response: $savedata");
+
+                            // savedata == "false" → ВКЛЮЧИТЬ SafeArea
+                            // savedata == "true"  → ВЫКЛЮЧИТЬ SafeArea
+                            if (savedata == "false") {
+                              setState(() {
+                                _useSafeArea = true;
+                              });
+                            } else if (savedata == "true") {
+                              setState(() {
+                                _useSafeArea = false;
+                              });
+                            }
+                          }
+                        } catch (_) {}
+
+                        if (luckHunterArgs.isEmpty) {
+                          return null;
+                        }
+
+                        try {
+                          return luckHunterArgs.reduce(
+                                (dynamic current, dynamic next) =>
+                            current + next,
+                          );
+                        } catch (_) {
+                          return luckHunterArgs.first;
+                        }
+                      },
+                    );
+                  },
+                  onLoadStart: (InAppWebViewController luckHunterC,
+                      Uri? luckHunterUri) async {
+                    setState(() {
+                      luckHunterStartLoadTimestamp =
+                          DateTime.now().millisecondsSinceEpoch;
+                    });
+
+                    final Uri? luckHunterViewUri = luckHunterUri;
+                    if (luckHunterViewUri != null) {
+                      if (_isLuckHunterBareEmail(luckHunterViewUri)) {
+                        try {
+                          await luckHunterC.stopLoading();
+                        } catch (_) {}
+                        final Uri luckHunterMailto =
+                        _toLuckHunterMailto(luckHunterViewUri);
+                        await _openLuckHunterMailWeb(luckHunterMailto);
+                        return;
+                      }
+
+                      final String luckHunterScheme =
+                      luckHunterViewUri.scheme.toLowerCase();
+                      if (luckHunterScheme != 'http' &&
+                          luckHunterScheme != 'https') {
+                        try {
+                          await luckHunterC.stopLoading();
+                        } catch (_) {}
+                      }
+                    }
+                  },
+                  onLoadError: (
+                      InAppWebViewController luckHunterController,
+                      Uri? luckHunterUrl,
+                      int luckHunterCode,
+                      String luckHunterMessage,
+                      ) async {
+                    final int luckHunterNow =
+                        DateTime.now().millisecondsSinceEpoch;
+                    final String luckHunterEvent =
+                        'InAppWebViewError(code=$luckHunterCode, message=$luckHunterMessage)';
+
+                    await luckHunterPostStat(
+                      luckHunterEvent: luckHunterEvent,
+                      luckHunterTimeStart: luckHunterNow,
+                      luckHunterTimeFinish: luckHunterNow,
+                      luckHunterUrl: luckHunterUrl?.toString() ?? '',
+                      luckHunterAppSid: luckHunterSpy.luckHunterAfUid,
+                      luckHunterFirstPageLoadTs:
+                      luckHunterFirstPageTimestamp,
+                    );
+                  },
+                  onReceivedError: (
+                      InAppWebViewController luckHunterController,
+                      WebResourceRequest luckHunterRequest,
+                      WebResourceError luckHunterError,
+                      ) async {
+                    final int luckHunterNow =
+                        DateTime.now().millisecondsSinceEpoch;
+                    final String luckHunterDescription =
+                    (luckHunterError.description ?? '').toString();
+                    final String luckHunterEvent =
+                        'WebResourceError(code=${luckHunterError}, message=$luckHunterDescription)';
+
+                    await luckHunterPostStat(
+                      luckHunterEvent: luckHunterEvent,
+                      luckHunterTimeStart: luckHunterNow,
+                      luckHunterTimeFinish: luckHunterNow,
+                      luckHunterUrl:
+                      luckHunterRequest.url?.toString() ?? '',
+                      luckHunterAppSid: luckHunterSpy.luckHunterAfUid,
+                      luckHunterFirstPageLoadTs:
+                      luckHunterFirstPageTimestamp,
+                    );
+                  },
+                  onLoadStop: (InAppWebViewController luckHunterC,
+                      Uri? luckHunterUri) async {
+                    await luckHunterC.evaluateJavascript(
+                      source:
+                      'console.log(\'NeonCinema harbor up!\');',
+                    );
+
+                    await _pushLuckHunterDevice();
+                    await _pushLuckHunterAfData();
+
+                    setState(() {
+                      luckHunterCurrentUrl = luckHunterUri.toString();
+                    });
+
+                    Future<void>.delayed(
+                      const Duration(seconds: 20),
+                          () {
+                        sendLuckHunterLoadedOnce(
+                          luckHunterUrl:
+                          luckHunterCurrentUrl.toString(),
+                          luckHunterTimestart:
+                          luckHunterStartLoadTimestamp,
+                        );
+                      },
+                    );
+                  },
+                  shouldOverrideUrlLoading: (
+                      InAppWebViewController luckHunterC,
+                      NavigationAction luckHunterAction,
+                      ) async {
+                    final Uri? luckHunterUri =
+                        luckHunterAction.request.url;
+                    if (luckHunterUri == null) {
+                      return NavigationActionPolicy.ALLOW;
+                    }
+
+                    if (_isLuckHunterBareEmail(luckHunterUri)) {
+                      final Uri luckHunterMailto =
+                      _toLuckHunterMailto(luckHunterUri);
+                      await _openLuckHunterMailWeb(luckHunterMailto);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+
+                    final String luckHunterScheme =
+                    luckHunterUri.scheme.toLowerCase();
+
+                    if (luckHunterScheme == 'mailto') {
+                      await _openLuckHunterMailWeb(luckHunterUri);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+
+                    if (luckHunterScheme == 'tel') {
+                      await launchUrl(
+                        luckHunterUri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                      return NavigationActionPolicy.CANCEL;
+                    }
+
+                    final String luckHunterHost =
+                    luckHunterUri.host.toLowerCase();
+                    final bool luckHunterIsSocial =
+                        luckHunterHost.endsWith('facebook.com') ||
+                            luckHunterHost.endsWith('instagram.com') ||
+                            luckHunterHost.endsWith('twitter.com') ||
+                            luckHunterHost.endsWith('x.com');
+
+                    if (luckHunterIsSocial) {
+                      await _openLuckHunterExternal(luckHunterUri);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+
+                    if (_isLuckHunterPlatformish(luckHunterUri)) {
+                      final Uri luckHunterWebUri =
+                      _luckHunterHttpize(luckHunterUri);
+                      await _openLuckHunterExternal(luckHunterWebUri);
+                      return NavigationActionPolicy.CANCEL;
+                    }
+
+                    if (luckHunterScheme != 'http' &&
+                        luckHunterScheme != 'https') {
+                      return NavigationActionPolicy.CANCEL;
+                    }
+
+                    return NavigationActionPolicy.ALLOW;
+                  },
+                  onCreateWindow: (
+                      InAppWebViewController luckHunterC,
+                      CreateWindowAction luckHunterRequest,
+                      ) async {
+                    final Uri? luckHunterUri =
+                        luckHunterRequest.request.url;
+                    if (luckHunterUri == null) {
+                      return false;
+                    }
+
+                    if (_isLuckHunterBareEmail(luckHunterUri)) {
+                      final Uri luckHunterMailto =
+                      _toLuckHunterMailto(luckHunterUri);
+                      await _openLuckHunterMailWeb(luckHunterMailto);
+                      return false;
+                    }
+
+                    final String luckHunterScheme =
+                    luckHunterUri.scheme.toLowerCase();
+
+                    if (luckHunterScheme == 'mailto') {
+                      await _openLuckHunterMailWeb(luckHunterUri);
+                      return false;
+                    }
+
+                    if (luckHunterScheme == 'tel') {
+                      await launchUrl(
+                        luckHunterUri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                      return false;
+                    }
+
+                    final String luckHunterHost =
+                    luckHunterUri.host.toLowerCase();
+                    final bool luckHunterIsSocial =
+                        luckHunterHost.endsWith('facebook.com') ||
+                            luckHunterHost.endsWith('instagram.com') ||
+                            luckHunterHost.endsWith('twitter.com') ||
+                            luckHunterHost.endsWith('x.com');
+
+                    if (luckHunterIsSocial) {
+                      await _openLuckHunterExternal(luckHunterUri);
+                      return false;
+                    }
+
+                    if (_isLuckHunterPlatformish(luckHunterUri)) {
+                      final Uri luckHunterWebUri =
+                      _luckHunterHttpize(luckHunterUri);
+                      await _openLuckHunterExternal(luckHunterWebUri);
+                      return false;
+                    }
+
+                    if (luckHunterScheme == 'http' ||
+                        luckHunterScheme == 'https') {
+                      luckHunterC.loadUrl(
+                        urlRequest: URLRequest(
+                          url: WebUri(luckHunterUri.toString()),
+                        ),
+                      );
+                    }
+
+                    return false;
+                  },
+                  onDownloadStartRequest: (
+                      InAppWebViewController luckHunterC,
+                      DownloadStartRequest luckHunterReq,
+                      ) async {
+                    await _openLuckHunterExternal(luckHunterReq.url);
+                  },
+                ),
+                Visibility(
+                  visible: !luckHunterVeilVisible,
+                  child: const LuckHunterLightningLoader(),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+
+    // ВКЛЮЧАЕМ SafeArea, если флаг _useSafeArea == true
+    if (_useSafeArea) {
+      content = SafeArea(child: content);
+    }
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: Stack(
-          children: <Widget>[
-            if (luckHunterCoverVisible)
-              const LuckHunterLightningLoader()
-            else
-              Container(
-                color: Colors.black,
-                child: Stack(
-                  children: <Widget>[
-                    InAppWebView(
-                      key: ValueKey<int>(luckHunterHatchCounter),
-                      initialSettings: InAppWebViewSettings(
-                        javaScriptEnabled: true,
-                        disableDefaultErrorPage: true,
-                        mediaPlaybackRequiresUserGesture: false,
-                        allowsInlineMediaPlayback: true,
-                        allowsPictureInPictureMediaPlayback: true,
-                        useOnDownloadStart: true,
-                        javaScriptCanOpenWindowsAutomatically: true,
-                        useShouldOverrideUrlLoading: true,
-                        supportMultipleWindows: true,
-                        transparentBackground: true,
-                      ),
-                      initialUrlRequest: URLRequest(
-                        url: WebUri(luckHunterHomeUrl),
-                      ),
-                      onWebViewCreated:
-                          (InAppWebViewController luckHunterController) {
-                        luckHunterWebViewController = luckHunterController;
-
-                        luckHunterBosun ??= LuckHunterBosun(
-                          luckHunterDeviceDeck: luckHunterDeviceDeck,
-                          luckHunterSpy: luckHunterSpy,
-                        );
-
-                        luckHunterCourier ??= LuckHunterCourier(
-                          luckHunterBosun: luckHunterBosun!,
-                          getLuckHunterWebView: () =>
-                          luckHunterWebViewController,
-                        );
-
-                        luckHunterWebViewController.addJavaScriptHandler(
-                          handlerName: 'onServerResponse',
-                          callback: (List<dynamic> luckHunterArgs) {
-                            try {
-
-                            } catch (_) {}
-
-                            if (luckHunterArgs.isEmpty) {
-                              return null;
-                            }
-
-                            try {
-                              return luckHunterArgs.reduce(
-                                      (dynamic current, dynamic next) =>
-                                  current + next);
-                            } catch (_) {
-                              return luckHunterArgs.first;
-                            }
-                          },
-                        );
-                      },
-                      onLoadStart: (InAppWebViewController luckHunterC,
-                          Uri? luckHunterUri) async {
-                        setState(() {
-                          luckHunterStartLoadTimestamp =
-                              DateTime.now()
-                                  .millisecondsSinceEpoch;
-                        });
-
-                        final Uri? luckHunterViewUri = luckHunterUri;
-                        if (luckHunterViewUri != null) {
-                          if (_isLuckHunterBareEmail(luckHunterViewUri)) {
-                            try {
-                              await luckHunterC.stopLoading();
-                            } catch (_) {}
-                            final Uri luckHunterMailto =
-                            _toLuckHunterMailto(luckHunterViewUri);
-                            await _openLuckHunterMailWeb(luckHunterMailto);
-                            return;
-                          }
-
-                          final String luckHunterScheme =
-                          luckHunterViewUri.scheme
-                              .toLowerCase();
-                          if (luckHunterScheme != 'http' &&
-                              luckHunterScheme != 'https') {
-                            try {
-                              await luckHunterC.stopLoading();
-                            } catch (_) {}
-                          }
-                        }
-                      },
-                      onLoadError: (
-                          InAppWebViewController luckHunterController,
-                          Uri? luckHunterUrl,
-                          int luckHunterCode,
-                          String luckHunterMessage,
-                          ) async {
-                        final int luckHunterNow =
-                            DateTime.now().millisecondsSinceEpoch;
-                        final String luckHunterEvent =
-                            'InAppWebViewError(code=$luckHunterCode, message=$luckHunterMessage)';
-
-                        await luckHunterPostStat(
-                          luckHunterEvent: luckHunterEvent,
-                          luckHunterTimeStart: luckHunterNow,
-                          luckHunterTimeFinish: luckHunterNow,
-                          luckHunterUrl:
-                          luckHunterUrl?.toString() ?? '',
-                          luckHunterAppSid:
-                          luckHunterSpy.luckHunterAfUid,
-                          luckHunterFirstPageLoadTs:
-                          luckHunterFirstPageTimestamp,
-                        );
-                      },
-
-                      onReceivedError: (
-                          InAppWebViewController luckHunterController,
-                          WebResourceRequest luckHunterRequest,
-                          WebResourceError luckHunterError,
-                          ) async {
-                        final int luckHunterNow =
-                            DateTime.now().millisecondsSinceEpoch;
-                        final String luckHunterDescription =
-                        (luckHunterError.description ?? '')
-                            .toString();
-                        final String luckHunterEvent =
-                            'WebResourceError(code=${luckHunterError}, message=$luckHunterDescription)';
-
-                        await luckHunterPostStat(
-                          luckHunterEvent: luckHunterEvent,
-                          luckHunterTimeStart: luckHunterNow,
-                          luckHunterTimeFinish: luckHunterNow,
-                          luckHunterUrl:
-                          luckHunterRequest.url?.toString() ?? '',
-                          luckHunterAppSid:
-                          luckHunterSpy.luckHunterAfUid,
-                          luckHunterFirstPageLoadTs:
-                          luckHunterFirstPageTimestamp,
-                        );
-                      },
-                      onLoadStop: (InAppWebViewController luckHunterC,
-                          Uri? luckHunterUri) async {
-                        await luckHunterC.evaluateJavascript(
-                          source:
-                          'console.log(\'NeonCinema harbor up!\');',
-                        );
-
-                        await _pushLuckHunterDevice();
-                        await _pushLuckHunterAfData();
-
-                        setState(() {
-                          luckHunterCurrentUrl =
-                              luckHunterUri.toString();
-                        });
-
-                        Future<void>.delayed(
-                            const Duration(seconds: 20), () {
-                          sendLuckHunterLoadedOnce(
-                            luckHunterUrl:
-                            luckHunterCurrentUrl.toString(),
-                            luckHunterTimestart:
-                            luckHunterStartLoadTimestamp,
-                          );
-                        });
-                      },
-                      shouldOverrideUrlLoading: (
-                          InAppWebViewController luckHunterC,
-                          NavigationAction luckHunterAction,
-                          ) async {
-                        final Uri? luckHunterUri =
-                            luckHunterAction.request.url;
-                        if (luckHunterUri == null) {
-                          return NavigationActionPolicy.ALLOW;
-                        }
-
-                        if (_isLuckHunterBareEmail(luckHunterUri)) {
-                          final Uri luckHunterMailto =
-                          _toLuckHunterMailto(luckHunterUri);
-                          await _openLuckHunterMailWeb(
-                              luckHunterMailto);
-                          return NavigationActionPolicy.CANCEL;
-                        }
-
-                        final String luckHunterScheme =
-                        luckHunterUri.scheme.toLowerCase();
-
-                        if (luckHunterScheme == 'mailto') {
-                          await _openLuckHunterMailWeb(luckHunterUri);
-                          return NavigationActionPolicy.CANCEL;
-                        }
-
-                        if (luckHunterScheme == 'tel') {
-                          await launchUrl(
-                            luckHunterUri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                          return NavigationActionPolicy.CANCEL;
-                        }
-
-                        final String luckHunterHost =
-                        luckHunterUri.host.toLowerCase();
-                        final bool luckHunterIsSocial =
-                            luckHunterHost.endsWith('facebook.com') ||
-                                luckHunterHost
-                                    .endsWith('instagram.com') ||
-                                luckHunterHost.endsWith('twitter.com') ||
-                                luckHunterHost.endsWith('x.com');
-
-                        if (luckHunterIsSocial) {
-                          await _openLuckHunterExternal(
-                              luckHunterUri);
-                          return NavigationActionPolicy.CANCEL;
-                        }
-
-                        if (_isLuckHunterPlatformish(luckHunterUri)) {
-                          final Uri luckHunterWebUri =
-                          _luckHunterHttpize(luckHunterUri);
-                          await _openLuckHunterExternal(
-                              luckHunterWebUri);
-                          return NavigationActionPolicy.CANCEL;
-                        }
-
-                        if (luckHunterScheme != 'http' &&
-                            luckHunterScheme != 'https') {
-                          return NavigationActionPolicy.CANCEL;
-                        }
-
-                        return NavigationActionPolicy.ALLOW;
-                      },
-                      onCreateWindow: (
-                          InAppWebViewController luckHunterC,
-                          CreateWindowAction luckHunterRequest,
-                          ) async {
-                        final Uri? luckHunterUri =
-                            luckHunterRequest.request.url;
-                        if (luckHunterUri == null) {
-                          return false;
-                        }
-
-                        if (_isLuckHunterBareEmail(luckHunterUri)) {
-                          final Uri luckHunterMailto =
-                          _toLuckHunterMailto(luckHunterUri);
-                          await _openLuckHunterMailWeb(
-                              luckHunterMailto);
-                          return false;
-                        }
-
-                        final String luckHunterScheme =
-                        luckHunterUri.scheme.toLowerCase();
-
-                        if (luckHunterScheme == 'mailto') {
-                          await _openLuckHunterMailWeb(luckHunterUri);
-                          return false;
-                        }
-
-                        if (luckHunterScheme == 'tel') {
-                          await launchUrl(
-                            luckHunterUri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                          return false;
-                        }
-
-                        final String luckHunterHost =
-                        luckHunterUri.host.toLowerCase();
-                        final bool luckHunterIsSocial =
-                            luckHunterHost.endsWith('facebook.com') ||
-                                luckHunterHost
-                                    .endsWith('instagram.com') ||
-                                luckHunterHost.endsWith('twitter.com') ||
-                                luckHunterHost.endsWith('x.com');
-
-                        if (luckHunterIsSocial) {
-                          await _openLuckHunterExternal(
-                              luckHunterUri);
-                          return false;
-                        }
-
-                        if (_isLuckHunterPlatformish(luckHunterUri)) {
-                          final Uri luckHunterWebUri =
-                          _luckHunterHttpize(luckHunterUri);
-                          await _openLuckHunterExternal(
-                              luckHunterWebUri);
-                          return false;
-                        }
-
-                        if (luckHunterScheme == 'http' ||
-                            luckHunterScheme == 'https') {
-                          luckHunterC.loadUrl(
-                            urlRequest:
-                            URLRequest(url: WebUri(luckHunterUri.toString())),
-                          );
-                        }
-
-                        return false;
-                      },
-                      onDownloadStartRequest:
-                          (InAppWebViewController luckHunterC,
-                          DownloadStartRequest luckHunterReq) async {
-                        await _openLuckHunterExternal(
-                            luckHunterReq.url);
-                      },
-                    ),
-                    Visibility(
-                      visible: !luckHunterVeilVisible,
-                      child: const LuckHunterLightningLoader(),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+        body: content,
       ),
     );
   }
